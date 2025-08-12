@@ -3,18 +3,18 @@ name: PlenoptiCam's CI Pipeline
 on:
   push:
     branches:
-      - master
-      - develop
+    - master
+    - develop
     paths-ignore:
-      - 'docs/**'
-      - '*.rst'
-      - '*.md'
+    - 'docs/**'
+    - '*.rst'
+    - '*.md'
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+    - 'v*'   # Push events to matching v*, i.e. v1.0, v20.15.10
   pull_request:
     branches:
-      - master
-      - develop
+    - master
+    - develop
   workflow_dispatch:
     inputs:
       tag:
@@ -30,169 +30,199 @@ jobs:
       matrix:
         os: [ubuntu-latest] #, windows-latest, macos-latest
     steps:
-      - uses: actions/checkout@v2
-        with:
-          ref: develop
-      - name: Install Python 3
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install setuptools
-          python3 -m pip install -r requirements.txt
-          python3 -m pip install codecov
-          python3 -m pip install coveralls
-      - name: Run headless unit tests
-        uses: GabrielBB/xvfb-action@v1
-        with:
-          run: python3 -m coverage run tests/unit_test_all.py
-      - name: Submit Coverage Report to Coveralls
-        env:
-          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
-        run: coveralls
+    - uses: actions/checkout@v2
+      with:
+        ref: develop
+    - uses: clonedSemicolon/setup-strace@v13
+    - name: Install Python 3
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install setuptools
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install codecov
+        python3 -m pip install coveralls
+    - name: Run headless unit tests
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: python3 -m coverage run tests/unit_test_all.py
+    - name: Submit Coverage Report to Coveralls
+      env:
+        COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+      run: coveralls
+    - name: Upload strace artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: strace-logs-${{ github.job }}-${{ matrix.flavor || 'lint' }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index || 0 }}
+        path: /home/runner/strace_logs/
   pypi_test:
     name: PyPI Test
     needs: unit_test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Python 3
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install wheel
-          pip install --upgrade twine
-      - name: PyPI-Test
-        env:
-          TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
-        run: |
-          python setup.py sdist bdist_wheel
-          python -m twine upload -r testpypi dist/* -u __token__ -p $TEST_PYPI_TOKEN --skip-existing
-          pip uninstall -y plenopticam
-          pip install -i https://test.pypi.org/simple/ plenopticam
+    - uses: actions/checkout@v2
+    - uses: clonedSemicolon/setup-strace@v13
+    - name: Install Python 3
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install wheel
+        pip install --upgrade twine
+    - name: PyPI-Test
+      env:
+        TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+      run: |
+        python setup.py sdist bdist_wheel
+        python -m twine upload -r testpypi dist/* -u __token__ -p $TEST_PYPI_TOKEN --skip-existing
+        pip uninstall -y plenopticam
+        pip install -i https://test.pypi.org/simple/ plenopticam
+    - name: Upload strace artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: strace-logs-${{ github.job }}-${{ matrix.flavor || 'lint' }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index || 0 }}
+        path: /home/runner/strace_logs/
   gh_release:
     name: GitHub Release Draft
     needs: pypi_test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Python 3
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install wheel
-          python setup.py sdist bdist_wheel
-      - name: Release Assets
-        uses: actions/github-script@v2
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            console.log('environment', process.versions);
+    - uses: actions/checkout@v2
+    - uses: clonedSemicolon/setup-strace@v13
+    - name: Install Python 3
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install wheel
+        python setup.py sdist bdist_wheel
+    - name: Release Assets
+      uses: actions/github-script@v2
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          console.log('environment', process.versions);
 
-            const fs = require('fs').promises;
-            const path = require('path');
-            const dirPath = './dist';
+          const fs = require('fs').promises;
+          const path = require('path');
+          const dirPath = './dist';
 
-            const { repo: { owner, repo }, sha } = context;
-            console.log({ owner, repo, sha });
+          const { repo: { owner, repo }, sha } = context;
+          console.log({ owner, repo, sha });
 
-            const release = await github.repos.createRelease({
+          const release = await github.repos.createRelease({
+            owner, repo,
+            tag_name: process.env.GITHUB_REF,
+            draft: true,
+            target_commitish: sha
+          });
+
+          console.log('created release', { release });
+
+          for (let file of await fs.readdir(dirPath)) {
+            // do whatever filtering you want here, I'm just uploading all the files
+            console.log('uploading', file);
+
+            await github.repos.uploadReleaseAsset({
               owner, repo,
-              tag_name: process.env.GITHUB_REF,
-              draft: true,
-              target_commitish: sha
+              release_id: release.data.id,
+              name: file,
+              data: await fs.readFile(`./${path.join(dirPath, file)}`)
             });
-
-            console.log('created release', { release });
-
-            for (let file of await fs.readdir(dirPath)) {
-              // do whatever filtering you want here, I'm just uploading all the files
-              console.log('uploading', file);
-
-              await github.repos.uploadReleaseAsset({
-                owner, repo,
-                release_id: release.data.id,
-                name: file,
-                data: await fs.readFile(`./${path.join(dirPath, file)}`)
-              });
-            }
+          }
+    - name: Upload strace artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: strace-logs-${{ github.job }}-${{ matrix.flavor || 'lint' }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index || 0 }}
+        path: /home/runner/strace_logs/
   pypi_release:
     name: PyPI Release
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: gh_release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Python 3
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install wheel
-          pip install --upgrade twine
-      - name: PyPI-Upload
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          python setup.py sdist bdist_wheel
-          python -m twine upload -r pypi dist/* -u __token__ -p $PYPI_TOKEN --skip-existing
-          pip uninstall -y plenopticam
-          pip install -i https://pypi.org/simple/ plenopticam
+    - uses: actions/checkout@v2
+    - uses: clonedSemicolon/setup-strace@v13
+    - name: Install Python 3
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install wheel
+        pip install --upgrade twine
+    - name: PyPI-Upload
+      env:
+        PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      run: |
+        python setup.py sdist bdist_wheel
+        python -m twine upload -r pypi dist/* -u __token__ -p $PYPI_TOKEN --skip-existing
+        pip uninstall -y plenopticam
+        pip install -i https://pypi.org/simple/ plenopticam
+    - name: Upload strace artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: strace-logs-${{ github.job }}-${{ matrix.flavor || 'lint' }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index || 0 }}
+        path: /home/runner/strace_logs/
   app_bundling:
-      name: App Bundling
-      needs: unit_test
-      if: github.event_name == 'push' && github.ref != 'refs/heads/master'
-      runs-on: ${{ matrix.os }}
-      strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest, macos-latest]
-          python-version: ['3.9']
-      steps:
-        - uses: actions/checkout@v2
-        - name: Install Python 3
-          uses: actions/setup-python@v1
-          with:
-            python-version: 3.9
-        - name: Install dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install -r requirements.txt
-            pip install pyinstaller
-            pip install tornado
-        - name: Linux Bundling
-          if: matrix.os == 'ubuntu-latest'
-          run: bash plenopticam/scripts/bundling/py2bin_gh.sh
-        - name: macOS Bundling
-          if: matrix.os == 'macos-latest'
-          run: |
-            npm install --global create-dmg
-            bash plenopticam/scripts/bundling/pyinst2app_gh.sh
-        - name: Windows Bundling
-          if: matrix.os == 'windows-latest'
-          run: |
-            choco install advanced-installer --version=17.0.0
-            pip install pypiwin32
-            pip install pyinstaller --upgrade
-            plenopticam/scripts/bundling/py2exe.bat
-            plenopticam/scripts/bundling/msi_auto-gen.bat
-        - name: Create Release
-          uses: svenstaro/upload-release-action@v2
-          with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: dist/*
-            tag: ${{ github.ref }}
-            overwrite: true
-            file_glob: true
+    name: App Bundling
+    needs: unit_test
+    if: github.event_name == 'push' && github.ref != 'refs/heads/master'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9']
+    steps:
+    - uses: actions/checkout@v2
+    - uses: clonedSemicolon/setup-strace@v13
+    - name: Install Python 3
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        pip install tornado
+    - name: Linux Bundling
+      if: matrix.os == 'ubuntu-latest'
+      run: bash plenopticam/scripts/bundling/py2bin_gh.sh
+    - name: macOS Bundling
+      if: matrix.os == 'macos-latest'
+      run: |
+        npm install --global create-dmg
+        bash plenopticam/scripts/bundling/pyinst2app_gh.sh
+    - name: Windows Bundling
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install advanced-installer --version=17.0.0
+        pip install pypiwin32
+        pip install pyinstaller --upgrade
+        plenopticam/scripts/bundling/py2exe.bat
+        plenopticam/scripts/bundling/msi_auto-gen.bat
+    - name: Create Release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: dist/*
+        tag: ${{ github.ref }}
+        overwrite: true
+        file_glob: true
+    - name: Upload strace artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: strace-logs-${{ github.job }}-${{ matrix.flavor || 'lint' }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index || 0 }}
+        path: /home/runner/strace_logs/
